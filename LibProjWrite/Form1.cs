@@ -13,6 +13,8 @@ using cbf;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
 using System.Diagnostics;
 using System.Timers;
+using System.Data.SqlClient;
+using System.Data.SQLite;
 
 namespace LibProjWrite
 {
@@ -22,18 +24,20 @@ namespace LibProjWrite
         private Thread udpListenerThread;
         private Listener listener;
 
+        private static string dbPath = "C:\\Users\\prata\\Desktop\\Files\\libraby.db";
+        private static string conString = "Data Source=" + dbPath + ";Version=3;New=False;Compress=True";
         public Form1()
         {
             InitializeComponent();
             udpListener = new UDPListener();
             listener = new Listener();
-            // Run the recovery loop indefinitely
+           
             while (true)
             {
-                // Call the Recovery function
+               
                 Recovery();
 
-                // Introduce a delay to control the frequency of the loop (e.g., every 100 milliseconds)
+                
                 Thread.Sleep(2000);
             }
 
@@ -73,17 +77,84 @@ namespace LibProjWrite
         {
             SerializableVector3[] jointValues = GetJointsHeight(cbf);
 
-           
             if (jointValues != null && jointValues.Length > 2)
             {
                 float zPosition = jointValues[2].Z;
                 Console.WriteLine($"Z Position of Joint[2]: {zPosition}");
+
+                float entradaLimit = 1.9f;
+                float saidaLimit = 3.5f;
+
+               
+                string movementType = "";
+                if (zPosition < entradaLimit)
+                {
+                    movementType = "Entrada";
+                }
+                else if (zPosition > saidaLimit)
+                {
+                    movementType = "Saida";
+                }
+
+                
+                WriteToSQLite(movementType);
             }
             else
             {
                 Console.WriteLine("Insufficient joint data");
             }
         }
+
+        private void WriteToSQLite(string movementType)
+        {
+         
+
+            using (SQLiteConnection connection = new SQLiteConnection(conString))
+            {
+                connection.Open();
+
+                
+                string query = "INSERT INTO mobilidade (id_sensor, tipo) VALUES (@idSensor, @tipo)";
+
+                using (SQLiteCommand command = new SQLiteCommand(query, connection))
+                {
+                    
+                    int idSensor = 1;
+                    string tipo = movementType;
+
+                    
+                    if (tipo != "Entrada" && tipo != "Saida")
+                    {
+                        Console.WriteLine("Invalid tipo value. It must be either 'Entrada' or 'Saida'.");
+                        return;
+                    }
+
+                    
+                    command.Parameters.AddWithValue("@idSensor", idSensor);
+                    command.Parameters.AddWithValue("@tipo", tipo);
+
+                    
+                    try
+                    {
+                        int rowsAffected = command.ExecuteNonQuery();
+
+                        if (rowsAffected > 0)
+                        {
+                            Console.WriteLine("Data successfully written to SQLite database.");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Failed to write data to SQLite database.");
+                        }
+                    }
+                    catch (SQLiteException ex)
+                    {
+                        Console.WriteLine($"SQLite Exception: {ex.Message}");
+                    }
+                }
+            }
+        }
+
 
         private SerializableVector3[] GetJointsHeight(ConvertedBodyFrame cbf)
         {
