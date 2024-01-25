@@ -1,20 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using static System.Data.Entity.Infrastructure.Design.Executor;
-using cbf;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
-using System.Diagnostics;
-using System.Timers;
-using System.Data.SqlClient;
 using System.Data.SQLite;
+using System.Linq;
+using System.Threading;
+using System.Windows.Forms;
+using cbf;
 
 namespace LibProjWrite
 {
@@ -24,31 +13,31 @@ namespace LibProjWrite
         private Thread udpListenerThread;
         private Listener listener;
 
+        private float initialZPosition = 0.0f;
+        private float[] zPositionBuffer = new float[5];
+        private int bufferIndex = 0;
+
         private static string dbPath = "C:\\Users\\prata\\Desktop\\Files\\libraby.db";
         private static string conString = "Data Source=" + dbPath + ";Version=3;New=False;Compress=True";
+
         public Form1()
         {
             InitializeComponent();
             udpListener = new UDPListener();
             listener = new Listener();
-           
+
             while (true)
             {
-               
                 Recovery();
-
-                
-                Thread.Sleep(2000);
+                Thread.Sleep(500);
             }
-
-
         }
 
         void Recovery()
         {
             listener = udpListener.GetListener();
-
             udpListener.StartListening();
+
             if (listener == null)
             {
                 Console.WriteLine("There is no listener");
@@ -56,7 +45,6 @@ namespace LibProjWrite
             }
 
             ConvertedBodyFrame cbf = listener.currentFrame;
-            SerializableVector3[] joints = null;
 
             if (cbf != null)
             {
@@ -64,13 +52,9 @@ namespace LibProjWrite
             }
             else
             {
-               
-               Console.Write( "A leitura não se encontra disponivel");
+                Console.Write("A leitura não se encontra disponível");
                 return;
             }
-
-           
-           
         }
 
         private void PrintJoint2ZPosition(ConvertedBodyFrame cbf)
@@ -79,83 +63,51 @@ namespace LibProjWrite
 
             if (jointValues != null && jointValues.Length > 2)
             {
-                float zPosition = jointValues[2].Z;
-                Console.WriteLine($"Z Position of Joint[2]: {zPosition}");
+                float newZPosition = jointValues[2].Z;
 
-                float entradaLimit = 1.9f;
-                float saidaLimit = 3.5f;
+                Console.WriteLine($"Z Position of Joint[2]: {newZPosition}");
 
-               
-                string movementType = "";
-                if (zPosition < entradaLimit)
+                float entradaLimit = 2.0f;
+                float saidaLimit = 4.0f;
+                float zDifferenceThreshold = 0.5f;
+
+                if (initialZPosition == 0.0f)
                 {
-                    movementType = "Entrada";
-                }
-                else if (zPosition > saidaLimit)
-                {
-                    movementType = "Saida";
-                }
-
-                
-                WriteToSQLite(movementType);
-            }
-            else
-            {
-                Console.WriteLine("Insufficient joint data");
-            }
-        }
-
-        private void WriteToSQLite(string movementType)
-        {
-         
-
-            using (SQLiteConnection connection = new SQLiteConnection(conString))
-            {
-                connection.Open();
-
-                
-                string query = "INSERT INTO mobilidade (id_sensor, tipo) VALUES (@idSensor, @tipo)";
-
-                using (SQLiteCommand command = new SQLiteCommand(query, connection))
-                {
-                    
-                    int idSensor = 1;
-                    string tipo = movementType;
-
-                    
-                    if (tipo != "Entrada" && tipo != "Saida")
+                    if (newZPosition < entradaLimit)
                     {
-                        Console.WriteLine("Invalid tipo value. It must be either 'Entrada' or 'Saida'.");
-                        return;
+                        Console.WriteLine("Capturing initial Z position");
+                        initialZPosition = newZPosition;
+                        Console.WriteLine($"Initial Z Position: {initialZPosition}");
                     }
+                }
+                else
+                {
+                    zPositionBuffer[bufferIndex] = newZPosition;
+                    bufferIndex = (bufferIndex + 1) % zPositionBuffer.Length;
 
-                    
-                    command.Parameters.AddWithValue("@idSensor", idSensor);
-                    command.Parameters.AddWithValue("@tipo", tipo);
+                    float movingAverage = zPositionBuffer.Average();
 
-                    
-                    try
+                    Console.WriteLine($"Moving Average: {movingAverage}");
+
+                    if (newZPosition < entradaLimit && movingAverage < entradaLimit)
                     {
-                        int rowsAffected = command.ExecuteNonQuery();
-
-                        if (rowsAffected > 0)
+                        if (initialZPosition - newZPosition > zDifferenceThreshold)
                         {
-                            Console.WriteLine("Data successfully written to SQLite database.");
-                        }
-                        else
-                        {
-                            Console.WriteLine("Failed to write data to SQLite database.");
+                            Console.WriteLine("Detected Saida");
+                            initialZPosition = 0.0f;
                         }
                     }
-                    catch (SQLiteException ex)
+                    else if (newZPosition > saidaLimit && movingAverage > saidaLimit)
                     {
-                        Console.WriteLine($"SQLite Exception: {ex.Message}");
+                        if (newZPosition - initialZPosition > zDifferenceThreshold)
+                        {
+                            Console.WriteLine("Detected Entrada");
+                            initialZPosition = 0.0f;
+                        }
                     }
                 }
             }
         }
-
-
         private SerializableVector3[] GetJointsHeight(ConvertedBodyFrame cbf)
         {
             SerializableVector3[] jointValues = new SerializableVector3[25];
@@ -172,7 +124,5 @@ namespace LibProjWrite
 
 
 
-    
 
-    
 

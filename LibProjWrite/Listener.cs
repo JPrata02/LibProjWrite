@@ -54,7 +54,7 @@ namespace LibProjWrite
             client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             client.Client.Bind(endPoint);
 
-            Console.WriteLine("Setup Done");
+          //  Console.WriteLine("Setup Done");
 
             // Start the asynchronous receive operation
             client.BeginReceive(new AsyncCallback(ReceiveCallback), null);

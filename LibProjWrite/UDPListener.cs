@@ -64,14 +64,14 @@ namespace LibProjWrite
             // toggle the "listening" state and start or stop the logger
             if (listener.Listening)
             {
-                Console.WriteLine("Was something ehre");
+              //  Console.WriteLine("Was something ehre");
                 listener.StopListening();
                 UpdateStatus();
 
             }
             else
             {
-                Console.WriteLine("Start New Listening");
+              //  Console.WriteLine("Start New Listening");
                 listener.StartListening(ipAddress, port, 0, compareValue);
                 UpdateStatus();
 
@@ -98,7 +98,7 @@ namespace LibProjWrite
                 if (listener.Listening)
                 {
                     // Do something when listening
-                    Console.WriteLine("Listening...");
+                   // Console.WriteLine("Listening...");
                 }
                 else
                 {
@@ -106,7 +106,7 @@ namespace LibProjWrite
                     {
                         // Do something when not listening but valid port
                         listener.ReceiveCallback(null);
-                        Console.WriteLine("Start Listening");
+                     //   Console.WriteLine("Start Listening");
                     }
                     else
                     {
