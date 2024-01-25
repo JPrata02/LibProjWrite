@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Data.SQLite;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
@@ -14,11 +13,10 @@ namespace LibProjWrite
         private Listener listener;
 
         private float initialZPosition = 0.0f;
-        private float[] zPositionBuffer = new float[5];
-        private int bufferIndex = 0;
-
-        private static string dbPath = "C:\\Users\\prata\\Desktop\\Files\\libraby.db";
-        private static string conString = "Data Source=" + dbPath + ";Version=3;New=False;Compress=True";
+        private float entradaLimit = 1.9f;  // Adjust these limits as needed
+        private float saidaLimit = 4.1f;
+        private bool isInEntrada = false;
+        private bool isInSaida = false;
 
         public Form1()
         {
@@ -29,7 +27,7 @@ namespace LibProjWrite
             while (true)
             {
                 Recovery();
-                Thread.Sleep(500);
+                Thread.Sleep(300);
             }
         }
 
@@ -67,47 +65,50 @@ namespace LibProjWrite
 
                 Console.WriteLine($"Z Position of Joint[2]: {newZPosition}");
 
-                float entradaLimit = 2.0f;
-                float saidaLimit = 4.0f;
-                float zDifferenceThreshold = 0.5f;
+                if (isInEntrada)
+                {
+                   
+                    if (newZPosition > saidaLimit)
+                    {
+                        Console.WriteLine("Detected Entrada");
+                        initialZPosition = 0.0f;
+                        isInEntrada = false;
+                        isInSaida = true;
+                        return;
+                    }
+                }
+                else if (isInSaida)
+                {
+                   
+                    if (newZPosition < entradaLimit)
+                    {
+                        Console.WriteLine("Detected Saida");
+                        initialZPosition = 0.0f;
+                        isInEntrada = true;
+                        isInSaida = false;
+                        return;
+                    }
+                }
 
+               
                 if (initialZPosition == 0.0f)
                 {
                     if (newZPosition < entradaLimit)
                     {
-                        Console.WriteLine("Capturing initial Z position");
+                        Console.WriteLine("Capturing initial Z position for Entrada");
                         initialZPosition = newZPosition;
-                        Console.WriteLine($"Initial Z Position: {initialZPosition}");
+                        isInEntrada = true;
                     }
-                }
-                else
-                {
-                    zPositionBuffer[bufferIndex] = newZPosition;
-                    bufferIndex = (bufferIndex + 1) % zPositionBuffer.Length;
-
-                    float movingAverage = zPositionBuffer.Average();
-
-                    Console.WriteLine($"Moving Average: {movingAverage}");
-
-                    if (newZPosition < entradaLimit && movingAverage < entradaLimit)
+                    else if (newZPosition > saidaLimit)
                     {
-                        if (initialZPosition - newZPosition > zDifferenceThreshold)
-                        {
-                            Console.WriteLine("Detected Saida");
-                            initialZPosition = 0.0f;
-                        }
-                    }
-                    else if (newZPosition > saidaLimit && movingAverage > saidaLimit)
-                    {
-                        if (newZPosition - initialZPosition > zDifferenceThreshold)
-                        {
-                            Console.WriteLine("Detected Entrada");
-                            initialZPosition = 0.0f;
-                        }
+                        Console.WriteLine("Capturing initial Z position for Saida");
+                        initialZPosition = newZPosition;
+                        isInSaida = true;
                     }
                 }
             }
         }
+
         private SerializableVector3[] GetJointsHeight(ConvertedBodyFrame cbf)
         {
             SerializableVector3[] jointValues = new SerializableVector3[25];
