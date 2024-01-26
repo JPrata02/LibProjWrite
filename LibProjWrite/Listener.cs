@@ -84,6 +84,7 @@ namespace LibProjWrite
             return currentFrame.Bodies[0].Joints[id].Position.Y;
         }
 
+      
         /// <summary>
         /// Checks successive frames for matching conditions and writes time stamp data.
         /// </summary>

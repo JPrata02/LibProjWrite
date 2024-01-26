@@ -1,11 +1,11 @@
-﻿using System;
+﻿using cbf;
+using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
-using System.Data;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
-using cbf;
 
 namespace LibProjWrite
 {
@@ -15,33 +15,22 @@ namespace LibProjWrite
         private Thread udpListenerThread;
         private Listener listener;
 
-        private float[] initialZPositions;  
-        private float entradaLimit = 1.9f; 
-        private float saidaLimit = 4.1f;
+        private Dictionary<int, BodyState> bodyStates = new Dictionary<int, BodyState>();
+        private float entradaLimit = 2.45f;
+        private float saidaLimit = 4.0f;
+        private bool isProgramRunning = false;
         private string movementType = "";
-        private bool[] isInEntrada; 
-        private bool[] isInSaida;    
-      
 
         private static string dbPath = "C:\\Users\\prata\\Desktop\\Files\\libraby.db";
         private static string conString = "Data Source=" + dbPath + ";Version=3;New=False;Compress=True";
+
+
         public Form1()
         {
             InitializeComponent();
             udpListener = new UDPListener();
             listener = new Listener();
-
-            
-            int maxBodies = 3;
-            initialZPositions = new float[maxBodies];
-            isInEntrada = new bool[maxBodies];
-            isInSaida = new bool[maxBodies];
-
-            while (true)
-            {
-                Recovery();
-                Thread.Sleep(500);
-            }
+            this.Text = "Monitoramento de Mobilidades";
         }
 
         void Recovery()
@@ -60,6 +49,7 @@ namespace LibProjWrite
             if (cbf != null)
             {
                 PrintJoint2ZPosition(cbf);
+                GetBodyID(cbf);
             }
             else
             {
@@ -70,79 +60,136 @@ namespace LibProjWrite
 
         private void PrintJoint2ZPosition(ConvertedBodyFrame cbf)
         {
-            List<SerializableVector3[]> jointValues = GetJointsHeight(cbf);
+            List<(int BodyId, SerializableVector3[] JointPositions)> bodyIdsAndJoints = GetBodyID(cbf);
 
-            if (jointValues != null && jointValues.Count > 0)
+            foreach (var (bodyId, jointPositions) in bodyIdsAndJoints)
             {
-                for (int i = 0; i < jointValues.Count; i++)
+                if (jointPositions.Length >= 3)
                 {
-                    if (jointValues[i] != null && jointValues[i].Length > 2)
+                    float newZPosition = jointPositions[2].Z;
+                    float newXPosition = jointPositions[2].X;
+
+                    if (IsPositionWithinLimits(newXPosition, newZPosition))
                     {
-                        float newZPosition = jointValues[i][2].Z;
+                        Console.WriteLine($"Z Position of Joint[2] for Body {bodyId}: {newZPosition}");
+                        Console.WriteLine($"X Position of Joint[2] for Body {bodyId}: {newXPosition}");
 
-                        Console.WriteLine($"Z Position of Joint[2] for Body {i + 1}: {newZPosition}");
-
-                        if (isInEntrada[i])
+                        if (!bodyStates.ContainsKey(bodyId))
                         {
-                            if (jointValues.Any(j => j.Any(k => k.Z > saidaLimit)))
+                            bodyStates[bodyId] = new BodyState();
+                        }
+
+                        BodyState state = bodyStates[bodyId];
+
+                        if (state.isInEntrada)
+                        {
+                            if (newZPosition > saidaLimit)
                             {
-                                Console.WriteLine($"Detected Entrada for Body {i + 1}");
-                                initialZPositions[i] = 0.0f;
-                                isInEntrada[i] = false;
-                                isInSaida[i] = true;
-                                Console.WriteLine($"Transition: Entrada to Saida for Body {i + 1}");
-                              
-                                movementType = "Entrada";
-                                //WriteDatabase(movementType);
-                                Console.WriteLine("Detetou Entrada");
-                                return;
+                                Console.WriteLine($"Detected Entrada for Body {bodyId}");
+                                movementType = ("Entrada");
+                                WriteDatabase(movementType);
+                                ResetState(bodyId);
+                                SetInSaidaState(bodyId);
                             }
                         }
-                        else if (isInSaida[i])
+                        else if (state.isInSaida)
                         {
-                            if (jointValues.Any(j => j.Any(k => k.Z < entradaLimit)))
+                            if (newZPosition < entradaLimit)
                             {
-                                Console.WriteLine($"Detected Saida for Body {i + 1}");
-                                initialZPositions[i] = 0.0f;
-                                isInEntrada[i] = true;
-                                isInSaida[i] = false;
-                                Console.WriteLine($"Transition: Saida to Entrada for Body {i + 1}");
-                             
-                                movementType = "Saida";
-                                Console.WriteLine("Detetou Saida");
-                               // WriteDatabase(movementType);
-                                return;
+                                Console.WriteLine($"Detected Saida for Body {bodyId}");
+                                movementType = ("Saida");
+                                WriteDatabase(movementType);
+                                ResetState(bodyId);
+                                SetInEntradaState(bodyId);
                             }
                         }
 
-                        if (initialZPositions[i] == 0.0f)
+                        if (state.initialZPosition == 0.0f)
                         {
-                            if (jointValues.Any(j => j.Any(k => k.Z < entradaLimit) || j.Any(k => k.Z > saidaLimit)))
+                            if (newZPosition < entradaLimit)
                             {
-                                Console.WriteLine($"Capturing initial Z position for {(jointValues[i].Any(k => k.Z < entradaLimit) ? "Entrada" : "Saida")} for Body {i + 1}");
-                                initialZPositions[i] = newZPosition;
-                                isInEntrada[i] = jointValues[i].Any(k => k.Z < entradaLimit);
-                                isInSaida[i] = jointValues[i].Any(k => k.Z > saidaLimit);
-                                Console.WriteLine($"IsInEntrada: {isInEntrada[i]}, IsInSaida: {isInSaida[i]} for Body {i + 1}");
+                                Console.WriteLine($"Capturing initial Z position for Entrada for Body {bodyId}");
+                                state.initialZPosition = newZPosition;
+                                SetInEntradaState(bodyId);
+                            }
+                            else if (newZPosition > saidaLimit)
+                            {
+                                Console.WriteLine($"Capturing initial Z position for Saida for Body {bodyId}");
+                                state.initialZPosition = newZPosition;
+                                SetInSaidaState(bodyId);
                             }
                         }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Data outside the specified range for Body {bodyId}");
                     }
                 }
             }
         }
 
-        private List<SerializableVector3[]> GetJointsHeight(ConvertedBodyFrame cbf)
+        private bool IsPositionWithinLimits(float xPosition, float zPosition)
         {
-            List<SerializableVector3[]> jointValues = new List<SerializableVector3[]>();
+            float minXLimit = -0.5f;
+            float maxXLimit = 1.5f;
 
-            foreach (ConvertedBody body in cbf.Bodies)
-            {
-                jointValues.Add(body.Joints.Select(o => o.Position).ToArray());
-            }
+            float minZLimit = 1.7f;
+            float maxZLimit = 4.4f;
 
-            return jointValues;
+            return (xPosition >= minXLimit && xPosition <= maxXLimit && zPosition >= minZLimit && zPosition <= maxZLimit);
         }
 
+        private void SetInEntradaState(int bodyId)
+        {
+            BodyState state = bodyStates[bodyId];
+            state.isInEntrada = true;
+            state.isInSaida = false;
+        }
+
+        private List<(int BodyId, SerializableVector3[] JointPositions)> GetBodyID(ConvertedBodyFrame cbf)
+        {
+            List<(int BodyId, SerializableVector3[] JointPositions)> bodyValues = new List<(int, SerializableVector3[])>();
+
+            for (int i = 0; i < cbf.Bodies.Count; i++)
+            {
+                ConvertedBody body = cbf.Bodies[i];
+
+                if (body != null && body.Joints.Count >= 3)
+                {
+                    int bodyId = i;
+
+                    SerializableVector3[] jointPositions = body.Joints
+                        .Select(o => o.Position)
+                        .ToArray();
+
+                    bodyValues.Add((bodyId, jointPositions));
+                }
+            }
+
+            return bodyValues;
+        }
+
+        private void SetInSaidaState(int bodyId)
+        {
+            BodyState state = bodyStates[bodyId];
+            state.isInEntrada = false;
+            state.isInSaida = true;
+        }
+
+        private void ResetState(int bodyId)
+        {
+            BodyState state = bodyStates[bodyId];
+            state.isInEntrada = false;
+            state.isInSaida = false;
+            state.initialZPosition = 0.0f;
+        }
+
+        private class BodyState
+        {
+            public bool isInEntrada { get; set; }
+            public bool isInSaida { get; set; }
+            public float initialZPosition { get; set; }
+        }
         private void WriteDatabase(string movementType)
         {
             try
@@ -166,7 +213,38 @@ namespace LibProjWrite
                 Console.WriteLine($"Error writing to database: {ex.Message}");
             }
         }
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if (!isProgramRunning)
+            {
+               
+                    isProgramRunning = true;
+                    Task.Run(() => StartProgram());
+                    label2.Text = "Programa Ligado";
+                    label2.ForeColor = System.Drawing.Color.Green;
+                
+            }
+            else
+            {
+              
+                isProgramRunning = false;
+                label2.Text = "Programa Desligado";
+                label2.ForeColor = System.Drawing.Color.Red;
+            }
+        }
+
+        private void StartProgram()
+        {
+            Console.WriteLine("Program started!");
+
+            while (isProgramRunning)
+            {
+                Recovery();
+                Thread.Sleep(200);
+            }
+
+            
+            Console.WriteLine("Program stopped!");
+        }
     }
 }
-
-
