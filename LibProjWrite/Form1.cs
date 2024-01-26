@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Data.SQLite;
+using System.Data;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
@@ -12,22 +15,32 @@ namespace LibProjWrite
         private Thread udpListenerThread;
         private Listener listener;
 
-        private float initialZPosition = 0.0f;
-        private float entradaLimit = 1.9f;  // Adjust these limits as needed
+        private float[] initialZPositions;  
+        private float entradaLimit = 1.9f; 
         private float saidaLimit = 4.1f;
-        private bool isInEntrada = false;
-        private bool isInSaida = false;
+        private string movementType = "";
+        private bool[] isInEntrada; 
+        private bool[] isInSaida;    
+      
 
+        private static string dbPath = "C:\\Users\\prata\\Desktop\\Files\\libraby.db";
+        private static string conString = "Data Source=" + dbPath + ";Version=3;New=False;Compress=True";
         public Form1()
         {
             InitializeComponent();
             udpListener = new UDPListener();
             listener = new Listener();
 
+            
+            int maxBodies = 3;
+            initialZPositions = new float[maxBodies];
+            isInEntrada = new bool[maxBodies];
+            isInSaida = new bool[maxBodies];
+
             while (true)
             {
                 Recovery();
-                Thread.Sleep(300);
+                Thread.Sleep(500);
             }
         }
 
@@ -57,73 +70,103 @@ namespace LibProjWrite
 
         private void PrintJoint2ZPosition(ConvertedBodyFrame cbf)
         {
-            SerializableVector3[] jointValues = GetJointsHeight(cbf);
+            List<SerializableVector3[]> jointValues = GetJointsHeight(cbf);
 
-            if (jointValues != null && jointValues.Length > 2)
+            if (jointValues != null && jointValues.Count > 0)
             {
-                float newZPosition = jointValues[2].Z;
-
-                Console.WriteLine($"Z Position of Joint[2]: {newZPosition}");
-
-                if (isInEntrada)
+                for (int i = 0; i < jointValues.Count; i++)
                 {
-                   
-                    if (newZPosition > saidaLimit)
+                    if (jointValues[i] != null && jointValues[i].Length > 2)
                     {
-                        Console.WriteLine("Detected Entrada");
-                        initialZPosition = 0.0f;
-                        isInEntrada = false;
-                        isInSaida = true;
-                        return;
-                    }
-                }
-                else if (isInSaida)
-                {
-                   
-                    if (newZPosition < entradaLimit)
-                    {
-                        Console.WriteLine("Detected Saida");
-                        initialZPosition = 0.0f;
-                        isInEntrada = true;
-                        isInSaida = false;
-                        return;
-                    }
-                }
+                        float newZPosition = jointValues[i][2].Z;
 
-               
-                if (initialZPosition == 0.0f)
-                {
-                    if (newZPosition < entradaLimit)
-                    {
-                        Console.WriteLine("Capturing initial Z position for Entrada");
-                        initialZPosition = newZPosition;
-                        isInEntrada = true;
-                    }
-                    else if (newZPosition > saidaLimit)
-                    {
-                        Console.WriteLine("Capturing initial Z position for Saida");
-                        initialZPosition = newZPosition;
-                        isInSaida = true;
+                        Console.WriteLine($"Z Position of Joint[2] for Body {i + 1}: {newZPosition}");
+
+                        if (isInEntrada[i])
+                        {
+                            if (jointValues.Any(j => j.Any(k => k.Z > saidaLimit)))
+                            {
+                                Console.WriteLine($"Detected Entrada for Body {i + 1}");
+                                initialZPositions[i] = 0.0f;
+                                isInEntrada[i] = false;
+                                isInSaida[i] = true;
+                                Console.WriteLine($"Transition: Entrada to Saida for Body {i + 1}");
+                              
+                                movementType = "Entrada";
+                                //WriteDatabase(movementType);
+                                Console.WriteLine("Detetou Entrada");
+                                return;
+                            }
+                        }
+                        else if (isInSaida[i])
+                        {
+                            if (jointValues.Any(j => j.Any(k => k.Z < entradaLimit)))
+                            {
+                                Console.WriteLine($"Detected Saida for Body {i + 1}");
+                                initialZPositions[i] = 0.0f;
+                                isInEntrada[i] = true;
+                                isInSaida[i] = false;
+                                Console.WriteLine($"Transition: Saida to Entrada for Body {i + 1}");
+                             
+                                movementType = "Saida";
+                                Console.WriteLine("Detetou Saida");
+                               // WriteDatabase(movementType);
+                                return;
+                            }
+                        }
+
+                        if (initialZPositions[i] == 0.0f)
+                        {
+                            if (jointValues.Any(j => j.Any(k => k.Z < entradaLimit) || j.Any(k => k.Z > saidaLimit)))
+                            {
+                                Console.WriteLine($"Capturing initial Z position for {(jointValues[i].Any(k => k.Z < entradaLimit) ? "Entrada" : "Saida")} for Body {i + 1}");
+                                initialZPositions[i] = newZPosition;
+                                isInEntrada[i] = jointValues[i].Any(k => k.Z < entradaLimit);
+                                isInSaida[i] = jointValues[i].Any(k => k.Z > saidaLimit);
+                                Console.WriteLine($"IsInEntrada: {isInEntrada[i]}, IsInSaida: {isInSaida[i]} for Body {i + 1}");
+                            }
+                        }
                     }
                 }
             }
         }
 
-        private SerializableVector3[] GetJointsHeight(ConvertedBodyFrame cbf)
+        private List<SerializableVector3[]> GetJointsHeight(ConvertedBodyFrame cbf)
         {
-            SerializableVector3[] jointValues = new SerializableVector3[25];
+            List<SerializableVector3[]> jointValues = new List<SerializableVector3[]>();
 
             foreach (ConvertedBody body in cbf.Bodies)
             {
-                jointValues = body.Joints.Select(o => o.Position).ToArray();
+                jointValues.Add(body.Joints.Select(o => o.Position).ToArray());
             }
 
             return jointValues;
         }
+
+        private void WriteDatabase(string movementType)
+        {
+            try
+            {
+                using (SQLiteConnection con = new SQLiteConnection(conString))
+                {
+                    con.Open();
+
+                    string sql = "INSERT INTO mobilidade (id_sensor, tipo) VALUES (1, @movementType)";
+
+                    using (SQLiteCommand cmd = new SQLiteCommand(sql, con))
+                    {
+                        cmd.Parameters.AddWithValue("@movementType", movementType);
+
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error writing to database: {ex.Message}");
+            }
+        }
     }
 }
-
-
-
 
 
