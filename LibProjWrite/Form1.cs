@@ -53,7 +53,7 @@ namespace LibProjWrite
             }
             else
             {
-                Console.Write("A leitura não se encontra disponível");
+                Console.WriteLine("Nenhum Corpo Detetado");
                 return;
             }
         }
@@ -72,7 +72,7 @@ namespace LibProjWrite
                     if (IsPositionWithinLimits(newXPosition, newZPosition))
                     {
                         Console.WriteLine($"Z Position of Joint[2] for Body {bodyId}: {newZPosition}");
-                        Console.WriteLine($"X Position of Joint[2] for Body {bodyId}: {newXPosition}");
+                      
 
                         if (!bodyStates.ContainsKey(bodyId))
                         {
@@ -122,7 +122,7 @@ namespace LibProjWrite
                     }
                     else
                     {
-                        Console.WriteLine($"Data outside the specified range for Body {bodyId}");
+                        Console.WriteLine($"Nenhum Corpo Detetado");
                     }
                 }
             }
@@ -184,12 +184,7 @@ namespace LibProjWrite
             state.initialZPosition = 0.0f;
         }
 
-        private class BodyState
-        {
-            public bool isInEntrada { get; set; }
-            public bool isInSaida { get; set; }
-            public float initialZPosition { get; set; }
-        }
+       
         private void WriteDatabase(string movementType)
         {
             try

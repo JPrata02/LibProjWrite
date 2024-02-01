@@ -138,86 +138,10 @@ namespace LibProjWrite
         /// <param name="ipCandidate">The string to be parsed</param>
         /// <param name="errorMessage">An error message to be displayed if the string does not validate</param>
         /// <returns>True for valid IP addresses, false for invalid ones</returns>
-        private bool ValidIp(string ipCandidate, out string errorMessage)
-        {
-            if (String.IsNullOrEmpty(ipCandidate))
-            {
-                ipAddress = IPAddress.Any;
-                errorMessage = "";
-                return true;
-            }
-            else
-            {
-                try
-                {
-                    ipAddress = IPAddress.Parse(ipCandidate);
-                    errorMessage = "";
-                    return true;
-                }
-                catch (ArgumentNullException)
-                {
-                    errorMessage = "IP address may not be null. Please enter a valid address.";
-                    return false;
-                }
-                catch (FormatException)
-                {
-                    errorMessage = "IP address has invalid format. Please try again.";
-                    return false;
-                }
-                catch (Exception)
-                {
-                    errorMessage = "An unhandled exception has occurred. Please report this!";
-                    return false;
-                }
-            }
-        }
+      
 
-        /// <summary>
-        /// Checks for validity of an entered port number (string).
-        /// </summary>
-        /// <param name="portCandidate">The string to be parsed</param>
-        /// <param name="errorMessage">An error message to be displayed if the string does not validate</param>
-        /// <returns>True for valid port numbers, false for invalid ones</returns>
-        private bool ValidPort(string portCandidate, out string errorMessage)
-        {
-            if (Int32.TryParse(portCandidate, out port))
-            {
-                if (port >= 1 && port <= 65535)
-                {
-                    errorMessage = "";
-                    return true;
-                }
-                else
-                {
-                    errorMessage = "Port out of bounds. Please enter a port between 1 and 65535";
-                    return false;
-                }
-            }
-            else
-            {
-                errorMessage = "Port invalid. Please enter a valid integer.";
-                return false;
-            }
-        }
+       
 
-        /// <summary>
-        /// Checks for validity of an entered height parameter (string).    
-        /// </summary>
-        /// <param name="heightCandidate">The string to be parsed</param>
-        /// <param name="errorMessage">An error message to be displayed if the string does not validate</param>
-        /// <returns>True for valid float point numbers, false for invalid ones</returns>
-        private bool ValidFloat(string heightCandidate, out string errorMessage)
-        {
-            if (float.TryParse(heightCandidate, out compareValue))
-            {
-                errorMessage = "";
-                return true;
-            }
-            else
-            {
-                errorMessage = "Cannot parse the input. Please enter a valid number in the format 0.12345";
-                return false;
-            }
-        }
+      
     }
 }
